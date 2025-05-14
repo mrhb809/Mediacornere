@@ -1,0 +1,582 @@
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Button } from '@/components/ui/button';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Loader2, XCircle, Award, BadgeCheck, RectangleHorizontal } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+// Replace with your actual AdMob App ID and ad unit IDs
+const ADMOB_APP_ID = 'ca-app-pub-3502013518472260~4697003881';
+const BANNER_AD_UNIT_ID = 'ca-app-pub-3502013518472260/1945832980';
+const INTERSTITIAL_AD_UNIT_ID = 'ca-app-pub-3502013518472260/2256824173';
+const REWARDED_INTERSTITIAL_AD_UNIT_ID = 'ca-app-pub-3502013518472260/3789413600';
+const NATIVE_AD_UNIT_ID = 'ca-app-pub-3502013518472260/1163250262';
+
+// Mock AdMob implementation for web (since react-native-google-mobile-ads is for React Native)
+const mobileAds = {
+    forContext: () => mobileAds,
+    initialize: () => Promise.resolve(),
+    start: () => Promise.resolve(),
+    on: () => {},
+    off: () => {},
+    removeAllListeners: () => {},
+    events: {
+        BANNER: {},
+        INTERSTITIAL: {
+            OPENED: 'interstitialOpened',
+            CLOSED: 'interstitialClosed',
+            LOADED: 'interstitialLoaded',
+            LOAD_FAILED: 'interstitialLoadFailed',
+        },
+        REWARDED_INTERSTITIAL: {
+            OPENED: 'rewardedInterstitialOpened',
+            CLOSED: 'rewardedInterstitialClosed',
+            LOADED: 'rewardedInterstitialLoaded',
+            LOAD_FAILED: 'rewardedInterstitialLoadFailed',
+            REWARDED: 'rewardedInterstitialRewarded',
+        },
+        NATIVE: {
+            LOADED: 'nativeLoaded',
+            LOAD_FAILED: 'nativeLoadFailed',
+        }
+    },
+    BannerAd: class {
+        constructor(unitId, size) {
+            this.unitId = unitId;
+            this.size = size;
+            this.loaded = false;
+        }
+        load() {
+            this.loaded = true; // Simulate successful load
+            return Promise.resolve();
+        }
+        show() {
+            if (this.loaded) {
+                console.log(`Showing banner ad: ${this.unitId}`);
+                return Promise.resolve();
+            } else {
+                return Promise.reject('Banner ad not loaded');
+            }
+        }
+        hide() {
+            console.log(`Hiding banner ad: ${this.unitId}`);
+            return Promise.resolve();
+        }
+        destroy() {
+            this.loaded = false;
+            console.log(`Destroying banner ad: ${this.unitId}`);
+            return Promise.resolve();
+        }
+    },
+    InterstitialAd: class {
+        constructor(unitId) {
+            this.unitId = unitId;
+            this.loaded = false;
+        }
+        load() {
+            this.loaded = true; // Simulate successful load
+            return Promise.resolve();
+        }
+        show() {
+            if (this.loaded) {
+                console.log(`Showing interstitial ad: ${this.unitId}`);
+                // Simulate ad shown event
+                mobileAds.emit(mobileAds.events.INTERSTITIAL.OPENED);
+                // Simulate ad closed after a delay
+                setTimeout(() => {
+                    mobileAds.emit(mobileAds.events.INTERSTITIAL.CLOSED);
+                }, 2000); // Simulate ad closing after 2 seconds
+                return Promise.resolve();
+            } else {
+                return Promise.reject('Interstitial ad not loaded');
+            }
+        }
+        destroy() {
+            this.loaded = false;
+            console.log(`Destroying interstitial ad: ${this.unitId}`);
+            return Promise.resolve();
+        }
+    },
+    RewardedInterstitialAd: class {
+        constructor(unitId) {
+            this.unitId = unitId;
+            this.loaded = false;
+        }
+        load() {
+            this.loaded = true; // Simulate successful load
+            return Promise.resolve();
+        }
+        show() {
+            if (this.loaded) {
+                console.log(`Showing rewarded interstitial ad: ${this.unitId}`);
+                mobileAds.emit(mobileAds.events.REWARDED_INTERSTITIAL.OPENED);
+
+                // Simulate user interaction and reward.  In a real app, you would
+                // have a way to know if the user watched the entire ad.
+                setTimeout(() => {
+                    // Simulate a rewarded event
+                    mobileAds.emit(mobileAds.events.REWARDED_INTERSTITIAL.REWARDED, {
+                        type: 'reward',
+                        amount: 10,
+                    });
+                    mobileAds.emit(mobileAds.events.REWARDED_INTERSTITIAL.CLOSED);
+                }, 3000); // Simulate ad closing after 3 seconds
+
+                return Promise.resolve();
+            } else {
+                return Promise.reject('Rewarded interstitial ad not loaded');
+            }
+        }
+        destroy() {
+            this.loaded = false;
+            console.log(`Destroying rewarded interstitial ad: ${this.unitId}`);
+            return Promise.resolve();
+        }
+    },
+    NativeAd: class {
+        constructor(unitId) {
+            this.unitId = unitId;
+            this.loaded = false;
+            this.ad = null;
+        }
+
+        load() {
+            this.loaded = true;
+            this.ad = {
+                headline: 'Example Native Ad',
+                body: 'This is a sample native ad content.',
+                callToAction: 'Learn More',
+                image: { url: 'https://via.placeholder.com/300x250' }, // Placeholder image
+                icon: { url: 'https://via.placeholder.com/50x50' },    // Placeholder icon
+                price: '$10',
+                store: 'Google Play',
+                starRating: 4.5,
+                advertiser: 'Example Advertiser'
+            }; // Simulate ad data
+
+            return Promise.resolve();
+        }
+
+        show() {
+            if (this.loaded) {
+                console.log(`Showing native ad: ${this.unitId}`);
+                return Promise.resolve();
+            } else {
+                return Promise.reject('Native ad not loaded!');
+            }
+        }
+
+        destroy() {
+            this.loaded = false;
+            this.ad = null;
+            console.log(`Destroying native ad: ${this.unitId}`);
+            return Promise.resolve();
+        }
+    },
+    AdManager: class {
+        constructor(unitId) {
+            this.unitId = unitId;
+            this.loaded = false;
+        }
+        load() {
+            this.loaded = true;
+            return Promise.resolve();
+        }
+        show() {
+            if (this.loaded) {
+              console.log(`Showing Ad Manager ad: ${this.unitId}`);
+              return Promise.resolve();
+            }
+            else {
+              return Promise.reject('Ad Manager ad not loaded');
+            }
+        }
+        destroy() {
+            this.loaded = false;
+            console.log(`Destroying Ad Manager ad: ${this.unitId}`);
+            return Promise.resolve();
+        }
+    },
+    VideoOptions: {},
+    setRequestConfiguration: () => Promise.resolve(),
+    tagForChildDirectedTreatment: (tag) => {},
+    tagForUnderAgeOfConsent: (tag) => {},
+    setAppVolume: (volume) => {},
+    setAppMuted: (muted) => {},
+    addListener: (event, callback) => {
+        if (!mobileAds.listeners[event]) {
+            mobileAds.listeners[event] = [];
+        }
+        mobileAds.listeners[event].push(callback);
+    },
+    removeListener: (event, callback) => {
+        if (mobileAds.listeners[event]) {
+            mobileAds.listeners[event] = mobileAds.listeners[event].filter(cb => cb !== callback);
+        }
+    },
+    emit: (event, data) => {
+        if (mobileAds.listeners[event]) {
+            mobileAds.listeners[event].forEach(callback => callback(data));
+        }
+    },
+    listeners: {},
+};
+
+const IframeAdMobApp = () => {
+    const [isInitialized, setIsInitialized] = useState(false);
+    const [showInterstitial, setShowInterstitial] = useState(false);
+    const [showRewardedInterstitial, setShowRewardedInterstitial] = useState(false);
+    const [showNativeAd, setShowNativeAd] = useState(false);
+    const [rewardedInfo, setRewardedInfo] = useState<{ type: string; amount: number } | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const bannerAdRef = useRef<InstanceType<typeof mobileAds.BannerAd> | null>(null);
+    const interstitialAdRef = useRef<InstanceType<typeof mobileAds.InterstitialAd> | null>(null);
+    const rewardedInterstitialAdRef = useRef<InstanceType<typeof mobileAds.RewardedInterstitialAd> | null>(null);
+    const nativeAdRef = useRef<InstanceType<typeof mobileAds.NativeAd> | null>(null);
+    const iframeRef = useRef<HTMLIFrameElement>(null);
+
+    // Initialize AdMob (mock version)
+    useEffect(() => {
+        const initializeAds = async () => {
+            try {
+                // Initialize Google Mobile Ads SDK
+                await mobileAds.initialize();
+                setIsInitialized(true);
+                setLoading(false);
+            } catch (err: any) {
+                setError(`Failed to initialize AdMob: ${err.message || 'Unknown error'}`);
+                setLoading(false);
+            }
+        };
+
+        initializeAds();
+
+        return () => {
+            // Clean up all listeners
+            Object.keys(mobileAds.listeners).forEach(event => {
+                mobileAds.removeAllListeners(event);
+            });
+        };
+    }, []);
+
+    // Load Banner Ad
+    useEffect(() => {
+        if (isInitialized) {
+            bannerAdRef.current = new mobileAds.BannerAd(BANNER_AD_UNIT_ID, {
+                adaptiveBanner: { width: 'device-width', height: 50 },
+            });
+
+            const loadBannerAd = async () => {
+                try {
+                    await bannerAdRef.current?.load();
+                    await bannerAdRef.current?.show();  // Show banner ad after load
+                } catch (err) {
+                    console.error('Failed to load banner ad:', err);
+                    // Handle error (e.g., show a fallback, retry)
+                }
+            };
+            loadBannerAd();
+
+            return () => {
+                bannerAdRef.current?.destroy();
+                bannerAdRef.current = null;
+            };
+        }
+    }, [isInitialized]);
+
+    // Load Interstitial Ad
+    useEffect(() => {
+        if (isInitialized) {
+            interstitialAdRef.current = new mobileAds.InterstitialAd(INTERSTITIAL_AD_UNIT_ID);
+
+            const loadInterstitialAd = async () => {
+                try {
+                    await interstitialAdRef.current?.load();
+                } catch (err) {
+                    console.error('Failed to load interstitial ad:', err);
+                }
+            };
+            loadInterstitialAd();
+
+            mobileAds.addListener(mobileAds.events.INTERSTITIAL.CLOSED, () => {
+                // Load the rewarded interstitial ad after the interstitial ad is closed
+                loadRewardedInterstitialAd();
+            });
+
+            return () => {
+                mobileAds.removeListener(mobileAds.events.INTERSTITIAL.CLOSED, () => {
+                    loadRewardedInterstitialAd();
+                });
+                interstitialAdRef.current?.destroy();
+                interstitialAdRef.current = null;
+            };
+        }
+    }, [isInitialized]);
+
+
+    // Show Interstitial Ad every 30 seconds
+    useEffect(() => {
+        if (isInitialized) {
+            const intervalId = setInterval(() => {
+                setShowInterstitial(true); // Trigger showing the ad
+            }, 30000); // 30 seconds
+
+            return () => clearInterval(intervalId);
+        }
+    }, [isInitialized]);
+
+    // Effect to actually show the Interstitial ad
+    useEffect(() => {
+        const showAd = async () => {
+            if (showInterstitial && interstitialAdRef.current?.loaded) {
+                try {
+                    await interstitialAdRef.current?.show();
+                    setShowInterstitial(false); // Reset state after showing
+                } catch (error) {
+                    console.error("Failed to show interstitial", error);
+                    setShowInterstitial(false);
+                }
+            }
+        };
+        showAd();
+    }, [showInterstitial]);
+
+    // Load Rewarded Interstitial Ad
+    const loadRewardedInterstitialAd = useCallback(async () => {
+        if (isInitialized) {
+            rewardedInterstitialAdRef.current = new mobileAds.RewardedInterstitialAd(REWARDED_INTERSTITIAL_AD_UNIT_ID);
+            try {
+                await rewardedInterstitialAdRef.current?.load();
+            } catch (err) {
+                console.error('Failed to load rewarded interstitial ad:', err);
+            }
+        }
+    }, [isInitialized]);
+
+    useEffect(() => {
+        if (isInitialized) {
+            mobileAds.addListener(
+                mobileAds.events.REWARDED_INTERSTITIAL.REWARDED,
+                (reward) => {
+                    setRewardedInfo(reward);
+                    console.log('Rewarded for rewarded interstitial ad:', reward);
+                }
+            );
+
+            mobileAds.addListener(mobileAds.events.REWARDED_INTERSTITIAL.CLOSED, () => {
+                loadNativeAd();
+            });
+
+            return () => {
+                mobileAds.removeListener(
+                    mobileAds.events.REWARDED_INTERSTITIAL.REWARDED,
+                    (reward) => {
+                        setRewardedInfo(reward);
+                        console.log('Rewarded for rewarded interstitial ad:', reward);
+                    }
+                );
+                mobileAds.removeListener(mobileAds.events.REWARDED_INTERSTITIAL.CLOSED, () => {
+                    loadNativeAd();
+                });
+                rewardedInterstitialAdRef.current?.destroy();
+                rewardedInterstitialAdRef.current = null;
+            };
+        }
+    }, [isInitialized, loadNativeAd]);
+
+    // Show Rewarded Interstitial Ad after Interstitial Ad is closed
+    useEffect(() => {
+        const showRewardedAd = async () => {
+            if (showRewardedInterstitial && rewardedInterstitialAdRef.current?.loaded) {
+                try {
+                    await rewardedInterstitialAdRef.current?.show();
+                    setShowRewardedInterstitial(false);
+                } catch (error) {
+                    console.error("Failed to show rewarded interstitial", error);
+                    setShowRewardedInterstitial(false);
+                }
+            }
+        };
+        showRewardedAd();
+    }, [showRewardedInterstitial]);
+
+    // Load Native Ad
+    const loadNativeAd = useCallback(async () => {
+        if (isInitialized) {
+            nativeAdRef.current = new mobileAds.NativeAd(NATIVE_AD_UNIT_ID);
+            try {
+                await nativeAdRef.current?.load();
+                setShowNativeAd(true); // Show native ad after loading
+            } catch (err) {
+                console.error('Failed to load native ad:', err);
+            }
+        }
+    }, [isInitialized]);
+
+    useEffect(() => {
+        return () => {
+            nativeAdRef.current?.destroy();
+            nativeAdRef.current = null;
+        };
+    }, []);
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center h-screen">
+                <Loader2 className="animate-spin text-4xl text-blue-500" />
+                <span className="sr-only">Loading...</span>
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div className="flex items-center justify-center h-screen text-red-500">
+                Error: {error}
+            </div>
+        );
+    }
+
+    return (
+        <div className="flex flex-col items-center justify-start min-h-screen bg-gray-100">
+            <h1 className="text-2xl font-bold mt-4 mb-4">iFrame with AdMob</h1>
+
+            {/* Banner Ad (Top of the screen) */}
+            {isInitialized && (
+                <div className="w-full flex justify-center mb-4">
+                    {/* Banner Ad Container */}
+                    <div id="banner-ad-container" className="w-full flex justify-center">
+                        {/* Banner Ad will be displayed here */}
+                        {/* In a real app, you would use a component from react-native-google-mobile-ads */}
+                        {isInitialized && bannerAdRef.current?.loaded && (
+                            <div className="bg-gray-200 border border-gray-300 p-2 text-center">
+                                <RectangleHorizontal className="w-6 h-6 mx-auto mb-1" />
+                                <p>Banner Ad (Mock)</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* iFrame */}
+            <div className="w-full max-w-4000 h-4000 relative">
+                <iframe
+                    ref={iframeRef}
+                    src="https://www.mediacornere.xyz"
+                    name="myiFrame"
+                    width="100%"
+                    height="100%"
+                    style={{ border: '1px solid #04fa94' }}
+                    allowFullScreen
+                    title="Media Corner"
+                />
+                <div style={{ overflow: 'auto', position: 'absolute', height: 0, width: 0 }}>
+                    <a href="https://www.poper.ai/tools/iframe-generator/">iFrame Generator</a>
+                </div>
+            </div>
+
+            {/* Interstitial Ad Trigger (Every 30 seconds) */}
+            <AnimatePresence>
+                {showInterstitial && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50"
+                    >
+                        <div className="bg-white p-4 rounded-lg text-center">
+                            <XCircle className="w-8 h-8 text-gray-500 mx-auto mb-2" />
+                            <h2 className="text-xl font-semibold mb-4">Interstitial Ad (Mock)</h2>
+                            <p className="mb-4">This is a full-screen ad.</p>
+                            <Button
+                                onClick={() => {
+                                    setShowInterstitial(false); // Simulate ad close
+                                    setShowRewardedInterstitial(true); // Show Rewarded after Interstitial
+                                }}
+                                className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+                            >
+                                Skip Ad
+                            </Button>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Rewarded Interstitial Ad Trigger */}
+            <AnimatePresence>
+                {showRewardedInterstitial && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50"
+                    >
+                        <div className="bg-white p-4 rounded-lg text-center">
+                            <Award className="w-8 h-8 text-yellow-500 mx-auto mb-2" />
+                            <h2 className="text-xl font-semibold mb-4">Rewarded Interstitial Ad (Mock)</h2>
+                            <p className="mb-4">Watch this ad to get a reward!</p>
+                            {rewardedInfo && (
+                                <p className="mb-4 text-green-600">
+                                    You earned {rewardedInfo.amount} {rewardedInfo.type}(s)!
+                                </p>
+                            )}
+                            <Button
+                                onClick={() => {
+                                    setShowRewardedInterstitial(false);
+                                }}
+                                className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded"
+                            >
+                                Skip Ad
+                            </Button>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Native Advanced Ad */}
+            <AnimatePresence>
+                {showNativeAd && nativeAdRef.current?.ad && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 50 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -50 }}
+                        className="mt-8 w-full max-w-md bg-white rounded-lg shadow-md p-4"
+                    >
+                        <h2 className="text-lg font-semibold mb-2">Native Advanced Ad (Mock)</h2>
+                        <div className="mb-2">
+                            <div className="flex items-center mb-2">
+                                {nativeAdRef.current.ad.icon && (
+                                    <img
+                                        src={nativeAdRef.current.ad.icon.url}
+                                        alt="Ad Icon"
+                                        className="w-10 h-10 rounded-full mr-2"
+                                    />
+                                )}
+                                <span className="font-bold">{nativeAdRef.current.ad.advertiser}</span>
+                            </div>
+                            <h3 className="text-md font-semibold">{nativeAdRef.current.ad.headline}</h3>
+                            <p className="text-sm text-gray-600">{nativeAdRef.current.ad.body}</p>
+                            {nativeAdRef.current.ad.image && (
+                                <img
+                                    src={nativeAdRef.current.ad.image.url}
+                                    alt="Ad"
+                                    className="w-full h-auto rounded-md mt-2"
+                                />
+                            )}
+                            <div className="mt-2 flex items-center justify-between">
+                                <span className="text-xs text-gray-500">{nativeAdRef.current.ad.store}</span>
+                                <span className="text-xs text-gray-500">Rating: {nativeAdRef.current.ad.starRating} ★</span>
+                            </div>
+                        </div>
+                        <Button className="w-full bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                            {nativeAdRef.current.ad.callToAction}
+                        </Button>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+        </div>
+    );
+};
+
+export default IframeAdMobApp;
